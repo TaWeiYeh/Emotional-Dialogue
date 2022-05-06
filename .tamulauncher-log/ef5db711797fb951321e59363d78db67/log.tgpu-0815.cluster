@@ -1,0 +1,6 @@
+1 : exit code 0: elapsed time = 0.000000s # #!/bin/bash
+2 : exit code 0: elapsed time = 0.000000s # 
+3 : exit code 0: elapsed time = 1.000000s # ml purge
+4 : exit code 0: elapsed time = 8.000000s # ml PyTorch/1.6.0-fosscuda-2019b-Python-3.7.4
+5 : exit code 0: elapsed time = 8.000000s # ml torchvision/0.7.0-fosscuda-2019b-Python-3.7.4-PyTorch-1.6.0
+6 : exit code 0: elapsed time = 0.000000s # ml
