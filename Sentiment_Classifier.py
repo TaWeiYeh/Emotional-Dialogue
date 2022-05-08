@@ -1,6 +1,3 @@
-import nltk
-from nltk.tokenize import word_tokenize
-
 import numpy as np
 import os
 
@@ -84,7 +81,6 @@ class SentimentDataset(Dataset):
         return sample
 
 
-# nltk.download('punkt')
 def create_data(corpus, sentiments, max_length_sentence, data_type):
     # print("\nCounting words...")
     # all_words = []
@@ -177,8 +173,8 @@ class SentimentNet(nn.Module):
     def forward(self, x):
         x = self.embeddings(x)
         x = self.flatten(x)
-        x = torch.sigmoid(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))  # binary
+        x = torch.sigmoid(self.fc1(x)) # mutliclass
+        # x = torch.sigmoid(self.fc2(x)) # binary
         return x
 
 embedding_dim = 20
