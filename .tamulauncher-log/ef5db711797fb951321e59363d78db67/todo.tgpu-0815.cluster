@@ -1,6 +1,0 @@
-1:#!/bin/bash
-2:
-3:ml purge
-4:ml PyTorch/1.6.0-fosscuda-2019b-Python-3.7.4
-5:ml torchvision/0.7.0-fosscuda-2019b-Python-3.7.4-PyTorch-1.6.0
-6:ml
