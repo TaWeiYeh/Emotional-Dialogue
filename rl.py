@@ -19,11 +19,31 @@ from loss import mask_nll_loss
 from seq2seq import *
 from dataloading import *
 from utils import *
+from Sentiment_Classifier import SentimentNet
 
 # Default word tokens
 PAD_token = 0  # Used for padding short sentences
 SOS_token = 1  # Start-of-sentence token
 EOS_token = 2  # End-of-sentence token
+
+
+def load_sentiment_checkpoint(filepath, voc=None):
+    if filepath is None:
+        raise NameError("Please specify filepath for sentiment model. ") 
+    if voc is None:
+        raise NameError("Please specify voc. ") 
+    
+    sentiment_checkpoint = torch.load(sentiment_classifier_filename, map_location=torch.device('cpu'))
+    sentiment_net_weight = sentiment_checkpoint['SentimentNet']
+    voc.__dict__ = sentiment_checkpoint['voc_dict']
+    vocab_size = sentiment_checkpoint['vocab_size']
+    embedding_dim = sentiment_checkpoint['embedding_dim']
+    max_seq_length = sentiment_checkpoint['max_seq_length']
+
+    sentiment_net = SentimentNet(vocab_size, embedding_dim, max_seq_length)
+    sentiment_net.cuda()
+
+    return voc, sentiment_net, max_seq_length
 
 
 def rl(input_variable, lengths, target_variable, mask, max_target_len, encoder, decoder, batch_size, teacher_forcing_ratio):
@@ -147,9 +167,17 @@ def semantic_coherence(input_variable, lengths, target_variable, mask, max_targe
         r3+= backward_loss / backward_len
     return r3
 
-l1=0.25
-l2=0.25
-l3=0.5
+def emotion_reward(responses):
+    """
+    Score if the sentence has emotion response 
+    """
+    r4 = 0
+    return r4    
+
+l1=0.15
+l2=0.15
+l3=0.35
+l4 0.35
 
 dull_responses = ["i do not know what you are talking about.", "i do not know.", "you do not know.", "you know what i mean.", "i know what you mean.", "you know what i am saying.", "you do not know anything."]
 
@@ -204,9 +232,12 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
         
         #Semantic coherence
         r3 = semantic_coherence(ep_input, lengths, target_var, mask, max_target_len, forward_encoder, forward_decoder, backward_encoder, backward_decoder, batch_size, teacher_forcing_ratio)
-        
+
+        #Information flow
+        r4 = emotion_reward(responses)
+
         #Final reward as a weighted sum of rewards
-        r = l1*r1 + l2*r2 + l3*r3
+        r = l1*r1 + l2*r2 + l3*r3 + l4*r4
         
         #Add the current reward to the list
         ep_rewards.append(r.detach().cpu().numpy())
@@ -313,6 +344,10 @@ if __name__ == "__main__":
     corpus_name = "train"
     corpus = os.path.join("data", corpus_name)
     datafile = os.path.join(corpus, "formatted_dialogues_train.txt")
+
+    # load sentiment classifier model
+    sentiment_classifier_filepath = "./data/save/SentimentClassifier/{}_checkpoint.tar".format(500)
+    voc, sentiment_net, max_seq_length = load_sentiment_checkpoint(sentiment_classifier_filepath, Voc(corpus_name))
 
     # Load/Assemble voc and pairs
     save_dir = os.path.join("data", "save")

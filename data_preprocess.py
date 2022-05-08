@@ -32,11 +32,18 @@ def print_lines(file, n=10):
 # Splits each line of the file into a dictionary of fields
 
 
-def load_lines(file_name):
+def load_lines(file_name, split_type='text'):
     conversations = []
     with open(file_name, 'r', encoding='utf-8') as f:
         for line in f:
-            values = line.split("__eou__")
+            if split_type == 'text':
+                values = line.split("__eou__")
+            elif split_type == 'emotion':
+                values = line.split()
+            else: 
+                raise TypeError(
+                    "Please specify splitting type, i.e. text, or emotion. "
+                )
             conversations.append(values)
     return conversations
 
@@ -55,8 +62,22 @@ def extract_sentence_pairs(conversations):
                 qa_pairs.append([input_line, target_line])
     return qa_pairs
 
+    
+# Extract sentences from conversations
+def extract_each_sentence(conversations):
+    sentences = []
+    for conversation in conversations:
+        # Iterate over all the lines of the conversation
+        # We ignore the last line (no answer for it)
+        for i in range(len(conversation)):
+            input_line = conversation[i].strip()
+            # Filter wrong samples (if one of the lists is empty)
+            if input_line:
+                sentences.append([input_line])
+    return sentences
 
-def create_formatted_dataset(source, target, type=None):
+
+def create_formatted_dataset(source, target, split_type='text', extract_mode='pairs', type=None):
     # Define path to new file
     datafile = target
 
@@ -65,15 +86,23 @@ def create_formatted_dataset(source, target, type=None):
     delimiter = str(codecs.decode(delimiter, "unicode_escape"))
 
     print("\nLoading conversations...")
-    conversations = load_lines(source)
+    conversations = load_lines(source, split_type=split_type)
 
     # Write new csv file
     print("\nWriting newly formatted file...")
     with open(datafile, 'w', encoding='utf-8') as outputfile:
         writer = csv.writer(outputfile, delimiter=delimiter,
                             lineterminator='\n')
-        for pair in extract_sentence_pairs(conversations):
-            writer.writerow(pair)
+        if extract_mode == 'pairs':
+            for pair in extract_sentence_pairs(conversations):
+                writer.writerow(pair)
+        elif extract_mode == 'single':
+            for sentence in extract_each_sentence(conversations):
+                writer.writerow(sentence)
+        else:
+            raise TypeError(
+                "Please specify extract mode, i.e. pairs or single. "
+            )
 
     # Print a sample of lines
     print("\nSample lines from file:")
@@ -83,17 +112,61 @@ def create_formatted_dataset(source, target, type=None):
 
 
 if __name__ == "__main__":
+    # create_formatted_dataset(
+    #     source="data/train/dialogues_train.txt",
+    #     target="data/train/formatted_single_dialogues_train_count.txt",
+    #     split_type='text',
+    #     extract_mode='single',
+    # )
+    
     create_formatted_dataset(
         source="data/train/dialogues_train.txt",
-        target="data/train/formatted_dialogues_train.txt",
+        target="data/train/formatted_single_dialogues_train.txt",
+        split_type='text',
+        extract_mode='single',
     )
 
     create_formatted_dataset(
         source="data/validation/dialogues_validation.txt",
-        target="data/validation/formatted_dialogues_validation.txt",
+        target="data/validation/formatted_single_dialogues_validation.txt",
+        split_type='text',
+        extract_mode='single',
     )
 
     create_formatted_dataset(
         source="data/test/dialogues_test.txt",
-        target="data/test/formatted_dialogues_test.txt",
+        target="data/test/formatted_single_dialogues_test.txt",
+        split_type='text',
+        extract_mode='single',
+    )
+    
+    '''
+    Format Emotion Conversations
+    '''
+    # create_formatted_dataset(
+    #     source="data/train/dialogues_emotion_train.txt",
+    #     target="data/train/formatted_single_dialogues_emotion_train_count.txt",
+    #     split_type='emotion',
+    #     extract_mode='single',
+    # )
+
+    create_formatted_dataset(
+        source="data/train/dialogues_emotion_train.txt",
+        target="data/train/formatted_single_dialogues_emotion_train.txt",
+        split_type='emotion',
+        extract_mode='single',
+    )
+
+    create_formatted_dataset(
+        source="data/validation/dialogues_emotion_validation.txt",
+        target="data/validation/formatted_single_dialogues_emotion_validation.txt",
+        split_type='emotion',
+        extract_mode='single',
+    )
+
+    create_formatted_dataset(
+        source="data/test/dialogues_emotion_test.txt",
+        target="data/test/formatted_single_dialogues_emotion_test.txt",
+        split_type='emotion',
+        extract_mode='single',
     )

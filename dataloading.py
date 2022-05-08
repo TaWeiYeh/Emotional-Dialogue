@@ -97,14 +97,15 @@ def normalize_string(s):
 # Read query/response pairs and return a voc object
 
 
-def read_vocs(datafile, corpus_name):
+def read_vocs(datafile, corpus_name, voc=None):
     print("Reading lines...")
     # Read the file and split into lines
     lines = open(datafile, encoding='utf-8').\
         read().strip().split('\n')
     # Split every line into pairs and normalize
     pairs = [[normalize_string(s) for s in l.split('\t')] for l in lines]
-    voc = Voc(corpus_name)
+    if voc is None:
+        voc = Voc(corpus_name)
     return voc, pairs
 
 
@@ -121,9 +122,9 @@ def filter_pairs(pairs):
 
 
 # Using the functions defined above, return a populated voc object and pairs list
-def load_prepare_data(corpus, corpus_name, datafile, save_dir):
+def load_prepare_data(corpus, corpus_name, datafile, save_dir, voc=None):
     print("Start preparing training data ...")
-    voc, pairs = read_vocs(datafile, corpus_name)
+    voc, pairs = read_vocs(datafile, corpus_name, voc)
     print("Read {!s} sentence pairs".format(len(pairs)))
     pairs = filter_pairs(pairs)
     print("Trimmed to {!s} sentence pairs".format(len(pairs)))
