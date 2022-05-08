@@ -5,7 +5,7 @@
 .tamulauncher-log/
 tamulauncher-log/
 log/
-data/
+data/save/
 test.py
 
 # Byte-compiled / optimized / DLL files
