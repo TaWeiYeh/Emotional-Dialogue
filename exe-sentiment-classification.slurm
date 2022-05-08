@@ -15,7 +15,7 @@
 #SBATCH --mail-user=twy359@tamu.edu    #Send all emails to email_address 
 
 ##First Executable Line
-cd /scratch/user/twy359/codes/Deep-Reinforcement-Learning-for-Dialogue-Generation-in-PyTorch/
+cd /scratch/user/twy359/codes/Emotional-Dialogue/
 . load_modules
 
 python Sentiment_Classifier.py

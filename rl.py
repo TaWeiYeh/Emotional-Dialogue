@@ -19,7 +19,7 @@ from loss import mask_nll_loss
 from seq2seq import *
 from dataloading import *
 from utils import *
-from Sentiment_Classifier import SentimentNet
+from Sentiment_Classifier import SentimentNet, trimNPadding
 
 # Default word tokens
 PAD_token = 0  # Used for padding short sentences
@@ -167,11 +167,19 @@ def semantic_coherence(input_variable, lengths, target_variable, mask, max_targe
         r3+= backward_loss / backward_len
     return r3
 
-def emotion_reward(responses):
+def emotion_reward(responses, sentiment_net, max_seq_length):
     """
     Score if the sentence has emotion response 
     """
     r4 = 0
+
+    trimmed_responses = trimNPadding(responses, max_seq_length, pad_value=0, dtype=torch.int64)
+    inputs = torch.stack(trimmed_responses)
+
+    outputs = sentiment_net(inputs)
+    _, predicted = torch.max(outputs.to('cpu').data, 1) # multiclass
+    r4 = predicted.ge(1).sum()
+
     return r4    
 
 l1=0.15
@@ -184,7 +192,8 @@ dull_responses = ["i do not know what you are talking about.", "i do not know.",
 MIN_COUNT = 3
 MAX_LENGTH = 15
 
-def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forward_encoder, forward_decoder, backward_encoder, backward_decoder, batch_size, teacher_forcing_ratio):
+def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forward_encoder, forward_decoder, backward_encoder, backward_decoder, \
+                        batch_size, teacher_forcing_ratio, sentiment_net, max_seq_length):
     #rewards per episode
     ep_rewards = []
     #indice of current episode
@@ -262,7 +271,9 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
     return np.mean(ep_rewards) if len(ep_rewards) > 0 else 0 
 
 
-def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, forward_decoder_optimizer, backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer,teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir):
+def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, forward_decoder_optimizer, \
+                    backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, \
+                    teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length):
 
     dull_responses = ["i do not know what you are talking about.", "i do not know.", "you do not know.", "you know what i mean.", "i know what you mean.", "you know what i am saying.", "you do not know anything."]
 
@@ -293,10 +304,12 @@ def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forwar
         backward_decoder_optimizer.zero_grad()
         
         #Forward
-        forward_loss, forward_len, _ = rl(input_variable, lengths, target_variable, mask, max_target_len, forward_encoder, forward_decoder, batch_size, teacher_forcing_ratio)
+        forward_loss, forward_len, _ = rl(input_variable, lengths, target_variable, mask, max_target_len, \
+                                        forward_encoder, forward_decoder, batch_size, teacher_forcing_ratio)
         
         #Calculate reward
-        reward = calculate_rewards(input_variable, lengths, target_variable, mask, max_target_len, forward_encoder, forward_decoder, backward_encoder, backward_decoder, batch_size, teacher_forcing_ratio)
+        reward = calculate_rewards(input_variable, lengths, target_variable, mask, max_target_len, forward_encoder, forward_decoder, \
+                                    backward_encoder, backward_decoder, batch_size, teacher_forcing_ratio, sentiment_net, max_seq_length)
         
         #Update forward seq2seq with loss scaled by reward
         loss = forward_loss * reward
@@ -351,7 +364,7 @@ if __name__ == "__main__":
 
     # Load/Assemble voc and pairs
     save_dir = os.path.join("data", "save")
-    voc, pairs = load_prepare_data(corpus, corpus_name, datafile, save_dir)
+    voc, pairs = load_prepare_data(corpus, corpus_name, datafile, save_dir, voc)
     # Print some pairs to validate
     print("\npairs:")
     for pair in pairs[:10]:
@@ -515,4 +528,6 @@ if __name__ == "__main__":
                 
     # Run training iterations
     print("Starting Training!")
-    training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, forward_decoder_optimizer, backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer,teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir)
+    training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, \
+                    forward_decoder_optimizer, backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, \
+                    teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length)
