@@ -48,7 +48,7 @@ python naive_run.py             # to evaulate if RL learn emotion responses, or 
 
 ## Experimental Results
 
-![image](https://github.com/TaWeiYeh/Emotional-Dialogue/tree/main/images/result.png)
+![Alt text](/images/result.png)
 
 ## Acknowledgement
 
