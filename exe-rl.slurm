@@ -1,11 +1,11 @@
 #!/bin/bash
 
 ##NECESSARY JOB SPECIFICATIONS
-#SBATCH --job-name=JobExample4        #Set the job name to "JobExample4"
+#SBATCH --job-name=RL                #Set the job name to "JobExample4"
 #SBATCH --time=10:00:00              #Set the wall clock limit 
 #SBATCH --ntasks=1                   #Request 1 task
 #SBATCH --mem=32G                    #Request 32.5GB per node
-#SBATCH --output=./log/Example4Out.%j   #Send stdout/err to "Example4Out.[jobID]"
+#SBATCH --output=./log/RLOut.%j   #Send stdout/err to "Example4Out.[jobID]"
 #SBATCH --gres=gpu:1                 #Request 1 GPU per node can be 1 or 2
 #SBATCH --partition=gpu              #Request the GPU partition/queue
 
@@ -15,7 +15,7 @@
 #SBATCH --mail-user=twy359@tamu.edu    #Send all emails to email_address 
 
 ##First Executable Line
-cd /scratch/user/twy359/codes/Deep-Reinforcement-Learning-for-Dialogue-Generation-in-PyTorch/
+cd /scratch/user/twy359/codes/Emotional-Dialogue/
 . load_modules
 
 python rl.py

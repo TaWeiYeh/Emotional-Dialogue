@@ -154,6 +154,8 @@ def train_iters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, dec
                 'voc_dict': voc.__dict__,
                 'embedding': embedding.state_dict()
             }, os.path.join(directory, '{}_{}.tar'.format(iteration, 'checkpoint')))
+            print(f"Save checkpoint [{iteration}] {os.path.join(directory, '{}_{}.tar'.format(iteration, 'checkpoint'))} \
+                    at Average loss: {print_loss_avg:.4f}")
 
 
 if __name__ == '__main__':
@@ -167,8 +169,15 @@ if __name__ == '__main__':
     datafile = os.path.join(corpus, "formatted_dialogues_train.txt")
 
     # Load/Assemble voc and pairs
+    filename = os.path.join("data", "save", "MulticlassSentimentClassifier", \
+                            "500_checkpoint.tar")
+    checkpoint = torch.load(filename)
+    voc = Voc(corpus_name)
+    voc.__dict__ = checkpoint['voc_dict']
+    voc.trimmed = False
+
     save_dir = os.path.join("data", "save")
-    voc, pairs = load_prepare_data(corpus, corpus_name, datafile, save_dir)
+    voc, pairs = load_prepare_data(corpus, corpus_name, datafile, save_dir, voc)
     # Print some pairs to validate
     print("\npairs:")
     for pair in pairs[:10]:
@@ -217,7 +226,7 @@ if __name__ == '__main__':
         encoder_optimizer_sd = checkpoint['en_opt']
         decoder_optimizer_sd = checkpoint['de_opt']
         embedding_sd = checkpoint['embedding']
-        voc.__dict__ = checkpoint['voc_dict']
+        # voc.__dict__ = checkpoint['voc_dict']
 
     print('Building encoder and decoder ...')
     # Initialize word embeddings
@@ -236,12 +245,15 @@ if __name__ == '__main__':
     decoder = decoder.to(device)
     print('Models built and ready to go!')
 
+    """
+    Training
+    """
     # Configure training/optimization
     clip = 50.0
     teacher_forcing_ratio = 1.0
     learning_rate = 0.0001
     decoder_learning_ratio = 5.0
-    n_iteration = 1000  # 4000
+    n_iteration = 10000 # 4000
     print_every = 1
     save_every = 1000
 

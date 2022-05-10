@@ -14,17 +14,6 @@ from dataloading import *
 """
 Variables
 """
-num_epochs = 500
-batch_size = 64
-data_type = torch.int64
-max_seq_length = 50
-save_every = 50
-print_every = 1200
-save_dir = os.path.join("data", "save")
-model_name = "MulticlassSentimentClassifier"
-
-learning_rate = 0.001
-
 # Default word tokens
 PAD_token = 0  # Used for padding short sentences
 SOS_token = 1  # Start-of-sentence token
@@ -40,7 +29,6 @@ voc = Voc("train")
 """
 Load Dataset
 """
-print("Loading dataset....")
 def load_file(file_name):
     conversations = list()
     with open(file_name, 'r', encoding='utf-8') as f:
@@ -49,15 +37,17 @@ def load_file(file_name):
     return conversations
 
 
-def trimNPadding(sequences, max_seq_length, pad_value=0, dtype=data_type):
+def trimNPadding(sequences, max_seq_length, pad_value=0, data_type=torch.int64):
     output = list()
     id = 0
     for seq in sequences:
+        assert len(seq.shape) == 1
         if max_seq_length <= len(seq):
             seq = torch.tensor(seq[:max_seq_length], dtype=data_type)
         else:
             padding_length = max_seq_length - len(seq)
-            seq = torch.tensor(seq, dtype=data_type)
+            if ~isinstance(seq, torch.Tensor): 
+                seq = torch.tensor(seq, dtype=data_type)
             seq = F.pad(seq, (0, padding_length), "constant", pad_value)
         seq[-1] = EOS_token
         output.append(seq)
@@ -123,36 +113,6 @@ def create_data(corpus, sentiments, max_length_sentence, data_type):
     return dataset, voc.num_words, voc.word2index
 
     
-corpus_train = load_file("data/train/formatted_single_dialogues_train.txt")
-sentiments_train = load_file("data/train/formatted_single_dialogues_emotion_train.txt")
-corpus_test = load_file("data/test/formatted_single_dialogues_test.txt")
-sentiments_test = load_file("data/test/formatted_single_dialogues_emotion_test.txt")
-corpus_valid = load_file("data/validation/formatted_single_dialogues_validation.txt")
-sentiments_valid = load_file("data/validation/formatted_single_dialogues_emotion_validation.txt")
-assert len(corpus_train) == len(sentiments_train)
-assert len(corpus_test) == len(sentiments_test)
-assert len(corpus_valid) == len(sentiments_valid)
-
-print("\nLoad training data...")
-train_data, train_vocab_size, train_vocab_dict = create_data(corpus_train, sentiments_train, max_seq_length, torch.int64)
-print("\nLoad test data...")
-test_data, test_vocab_size, test_vocab_dict = create_data(corpus_test, sentiments_test, max_seq_length, torch.int64)
-print("\nLoad valid data...")
-valid_data, valid_vocab_size, valid_vocab_dict = create_data(corpus_test, sentiments_test, max_seq_length, torch.int64)
-
-print(f"\ntrain_vocab_dict length is {len(train_vocab_dict)}")
-print(f"\ntest_vocab_dict length is {len(test_vocab_dict)}")
-print(f"\nvalid_vocab_dict length is {len(valid_vocab_dict)}")
-vocab_size = max(train_vocab_size, test_vocab_size, valid_vocab_size)
-print("\nvocab_size is ", vocab_size)
-
-train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
-
-# # Display image and label.
-# train_features, train_labels = next(iter(train_dataloader))
-# print(f"Sentence : {train_features}")
-# print(f"Sentiment : {train_labels}")
 
 
 """
@@ -177,18 +137,6 @@ class SentimentNet(nn.Module):
         # x = torch.sigmoid(self.fc2(x)) # binary
         return x
 
-embedding_dim = 20
-net = SentimentNet(vocab_size, embedding_dim, max_seq_length)
-net = net.to(device)
-criterion = nn.CrossEntropyLoss() # multiclass 
-# criterion = nn.BCELoss() # binary
-optimizer = optim.Adam(net.parameters(), lr=learning_rate)
-
-
-for state in optimizer.state.values():
-    for k, v in state.items():
-        if isinstance(v, torch.Tensor):
-            state[k] = v.cuda()
 
 
 """
@@ -221,63 +169,131 @@ def evaluate(model: nn.Module, eval_dataloader: DataLoader) -> float:
 
     return total_loss, accuracy
 
+def train(net, criterion, optimizer, num_epochs, train_dataloader, save_dir, model_name, 
+            print_every, save_every, device):
+    for epoch in range(num_epochs):  # loop over the dataset multiple times
 
-print("training...")
-for epoch in range(num_epochs):  # loop over the dataset multiple times
+        training_loss = 0.0
+        correct = 0.0
+        train_accuracy = 0.
+        for i, data in enumerate(train_dataloader, 0):
+            # get the inputs; data is a list of [inputs, labels]
+            inputs, labels = data
+            labels = labels.flatten()
 
-    training_loss = 0.0
-    correct = 0.0
-    train_accuracy = 0.
-    for i, data in enumerate(train_dataloader, 0):
-        # get the inputs; data is a list of [inputs, labels]
-        inputs, labels = data
-        labels = labels.flatten()
+            # zero the parameter gradients
+            optimizer.zero_grad()
 
-        # zero the parameter gradients
-        optimizer.zero_grad()
+            # forward + backward + optimize
+            outputs = net(inputs.to(device))
+            loss = criterion(outputs, labels.to(device)) # (binary) BCELoss need float input
+            loss.backward()
+            optimizer.step()
 
-        # forward + backward + optimize
-        outputs = net(inputs.to(device))
-        loss = criterion(outputs, labels.to(device)) # (binary) BCELoss need float input
-        loss.backward()
-        optimizer.step()
+            # print statistics
+            training_loss += loss.item()
+            _, predicted = torch.max(outputs.to('cpu').data, 1) # multiclass
+            # predicted = outputs.cpu().ge(0.5).flatten().type(labels.dtype) # binary
+            correct += (predicted == labels).sum().item()
 
-        # print statistics
-        training_loss += loss.item()
-        _, predicted = torch.max(outputs.to('cpu').data, 1) # multiclass
-        # predicted = outputs.cpu().ge(0.5).flatten().type(labels.dtype) # binary
-        correct += (predicted == labels).sum().item()
+            # if i % print_every == print_every - 1:    # print every 2000 mini-batches
+            #     train_accuracy = 100 * correct / (labels.size(0) * print_every)
+            #     training_loss /= print_every
+            #     # print(f'[{epoch + 1}, {i + 1:5d}] loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}%')
+            #     training_loss = 0.0
+            #     correct = 0.0
+        
+        train_accuracy = 100 * correct / (batch_size * len(train_dataloader))
+        training_loss /= len(train_dataloader)
+        eval_loss, eval_accuracy = evaluate(net, test_dataloader)
+        print(f'[{epoch + 1}] Train loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}% \
+                Eval loss: {eval_loss:.3f} Accuracy: {eval_accuracy:.2f}%')
+            
+        #SAVE CHECKPOINT TO DO
+        if (epoch % save_every == save_every - 1):
+            directory = os.path.join(save_dir, model_name)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            torch.save({
+                'epoch': epoch + 1,
+                'SentimentNet': net.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'train_loss': training_loss,
+                'voc_dict': voc.__dict__,
+                'vocab_size' : vocab_size, 
+                'embedding_dim' : embedding_dim, 
+                'max_seq_length' : max_seq_length,
+            }, os.path.join(directory, '{}_{}.tar'.format(epoch + 1, 'checkpoint')))
+            print(f"Save checkpoint: {os.path.join(directory, '{}_{}.tar'.format(epoch + 1, 'checkpoint'))} \
+                    at Train loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}% \
+                    Eval loss: {eval_loss:.3f} Accuracy: {eval_accuracy:.2f}%")
 
-        # if i % print_every == print_every - 1:    # print every 2000 mini-batches
-        #     train_accuracy = 100 * correct / (labels.size(0) * print_every)
-        #     training_loss /= print_every
-        #     # print(f'[{epoch + 1}, {i + 1:5d}] loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}%')
-        #     training_loss = 0.0
-        #     correct = 0.0
-    
-    train_accuracy = 100 * correct / (batch_size * len(train_dataloader))
-    training_loss /= len(train_dataloader)
-    eval_loss, eval_accuracy = evaluate(net, test_dataloader)
-    print(f'[{epoch + 1}] Train loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}% \
-            Eval loss: {eval_loss:.3f} Accuracy: {eval_accuracy:.2f}%')
-         
-    #SAVE CHECKPOINT TO DO
-    if (epoch % save_every == save_every - 1):
-        directory = os.path.join(save_dir, model_name)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        torch.save({
-            'epoch': epoch + 1,
-            'SentimentNet': net.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'train_loss': training_loss,
-            'voc_dict': voc.__dict__,
-            'vocab_size' : vocab_size, 
-            'embedding_dim' : embedding_dim, 
-            'max_seq_length' : max_seq_length,
-        }, os.path.join(directory, '{}_{}.tar'.format(epoch + 1, 'checkpoint')))
-        print(f"Save checkpoint: {os.path.join(directory, '{}_{}.tar'.format(epoch + 1, 'checkpoint'))} \
-                at Train loss: {training_loss:.3f} Accuracy: {train_accuracy:.2f}% \
-                Eval loss: {eval_loss:.3f} Accuracy: {eval_accuracy:.2f}%")
 
-print('Finished Training')
+if __name__ == "__main__":
+    """
+    Variables
+    """
+    num_epochs = 500
+    batch_size = 64
+    data_type = torch.int64
+    max_seq_length = 50
+    save_every = 50
+    print_every = 1200
+    save_dir = os.path.join("data", "save")
+    model_name = "MulticlassSentimentClassifier"
+    learning_rate = 0.001
+
+    """
+    Load Dataset
+    """
+    print("Loading dataset....")
+    corpus_train = load_file("data/train/formatted_single_dialogues_train.txt")
+    sentiments_train = load_file("data/train/formatted_single_dialogues_emotion_train.txt")
+    corpus_test = load_file("data/test/formatted_single_dialogues_test.txt")
+    sentiments_test = load_file("data/test/formatted_single_dialogues_emotion_test.txt")
+    corpus_valid = load_file("data/validation/formatted_single_dialogues_validation.txt")
+    sentiments_valid = load_file("data/validation/formatted_single_dialogues_emotion_validation.txt")
+    assert len(corpus_train) == len(sentiments_train)
+    assert len(corpus_test) == len(sentiments_test)
+    assert len(corpus_valid) == len(sentiments_valid)
+
+    print("\nLoad training data...")
+    train_data, train_vocab_size, train_vocab_dict = create_data(corpus_train, sentiments_train, max_seq_length, torch.int64)
+    print("\nLoad test data...")
+    test_data, test_vocab_size, test_vocab_dict = create_data(corpus_test, sentiments_test, max_seq_length, torch.int64)
+    print("\nLoad valid data...")
+    valid_data, valid_vocab_size, valid_vocab_dict = create_data(corpus_test, sentiments_test, max_seq_length, torch.int64)
+
+    print(f"\ntrain_vocab_dict length is {len(train_vocab_dict)}")
+    print(f"\ntest_vocab_dict length is {len(test_vocab_dict)}")
+    print(f"\nvalid_vocab_dict length is {len(valid_vocab_dict)}")
+    vocab_size = max(train_vocab_size, test_vocab_size, valid_vocab_size)
+    print("\nvocab_size is ", vocab_size)
+
+    train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
+
+    """
+    Build Model
+    """
+    printf("Build Sentiment model...")
+    embedding_dim = 20
+    net = SentimentNet(vocab_size, embedding_dim, max_seq_length)
+    net = net.to(device)
+    criterion = nn.CrossEntropyLoss() # multiclass 
+    # criterion = nn.BCELoss() # binary
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+
+
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.cuda()
+
+    """
+    Train
+    """            
+    print("training...")
+    train(net, criterion, optimizer, num_epochs, train_dataloader, save_dir, model_name, \
+            print_every, save_every, device)
+    print('Finished Training')

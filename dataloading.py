@@ -94,6 +94,14 @@ def normalize_string(s):
     s = re.sub(r"\s+", r" ", s).strip()
     return s
 
+def normalize_string_without_symbols(s):
+    s = unicode_to_ascii(s.lower().strip())
+    s = re.sub(f"\.", r" ", s)
+    s = re.sub(r"([.!?])", r" \1", s)
+    s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
+    s = re.sub(r"\s+", r" ", s).strip()
+    return s
+
 # Read query/response pairs and return a voc object
 
 

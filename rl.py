@@ -29,11 +29,11 @@ EOS_token = 2  # End-of-sentence token
 
 def load_sentiment_checkpoint(filepath, voc=None):
     if filepath is None:
-        raise NameError("Please specify filepath for sentiment model. ") 
+        raise OSError("Please specify filepath for sentiment model. ") 
     if voc is None:
         raise NameError("Please specify voc. ") 
     
-    sentiment_checkpoint = torch.load(sentiment_classifier_filename, map_location=torch.device('cpu'))
+    sentiment_checkpoint = torch.load(filepath, map_location=torch.device('cpu'))
     sentiment_net_weight = sentiment_checkpoint['SentimentNet']
     voc.__dict__ = sentiment_checkpoint['voc_dict']
     vocab_size = sentiment_checkpoint['vocab_size']
@@ -41,6 +41,8 @@ def load_sentiment_checkpoint(filepath, voc=None):
     max_seq_length = sentiment_checkpoint['max_seq_length']
 
     sentiment_net = SentimentNet(vocab_size, embedding_dim, max_seq_length)
+    sentiment_net.load_state_dict(sentiment_net_weight)
+    sentiment_net.eval()
     sentiment_net.cuda()
 
     return voc, sentiment_net, max_seq_length
@@ -173,21 +175,30 @@ def emotion_reward(responses, sentiment_net, max_seq_length):
     """
     r4 = 0
 
-    trimmed_responses = trimNPadding(responses, max_seq_length, pad_value=0, dtype=torch.int64)
-    inputs = torch.stack(trimmed_responses)
+    # print(f"responses length is {len(responses)}")
+    for response in responses:
+        trimmed_response = trimNPadding(response, max_seq_length, pad_value=0, data_type=torch.int64)
+        # print(f"trimmed_response {trimmed_response}")
+        inputs = torch.stack(trimmed_response).cuda()
 
-    outputs = sentiment_net(inputs)
-    _, predicted = torch.max(outputs.to('cpu').data, 1) # multiclass
-    r4 = predicted.ge(1).sum()
+        outputs = sentiment_net(inputs)
+        _, predicted = torch.max(outputs.to('cpu').data, 1) # multiclass
+        r4 += predicted.ge(1).sum()
 
     return r4    
 
-l1=0.15
-l2=0.15
-l3=0.35
-l4 0.35
+# with emotion reward
+l1 = 0.15
+l2 = 0.15
+l3 = 0.35
+l4 = 0.35
+
+# l1 = 0.25
+# l2 = 0.25
+# l3 = 0.5
 
 dull_responses = ["i do not know what you are talking about.", "i do not know.", "you do not know.", "you know what i mean.", "i know what you mean.", "you know what i am saying.", "you do not know anything."]
+                # "i don t know what you are talking about.", "i don t know.", "you don t know.", "you know what i mean.", "i know what you mean.", "you know what i am saying.", "you don t know anything."]
 
 MIN_COUNT = 3
 MAX_LENGTH = 15
@@ -208,7 +219,6 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
     #ep_num bounded -> to redefine (MEDIUM POST)
     while (ep_num <= 10):
         
-        print(ep_num)
         #generate current response with the forward model
         _, _, curr_response = rl(ep_input, lengths, ep_target, mask, max_target_len, forward_encoder, forward_decoder, batch_size, teacher_forcing_ratio)
         
@@ -220,17 +230,17 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
             break
             
             
-        #We can add the response to responses list
-        #curr_response = torch.LongTensor(curr_response).view(-1, 1)
-        #transform curr_response size
-        #target = torch.zeros(960, 1)
-        #target[:15, :] = curr_response
-        #curr_response = target
-        #print(curr_response.size())
-        #curr_response = torch.reshape(curr_response, (15, 64))
-        #print(curr_response.size())
-        #curr_response = curr_response.to(device)
-        #responses.append(curr_response) 
+        ## We can add the response to responses list
+        # curr_response = torch.LongTensor(curr_response).view(-1, 1)
+        ## transform curr_response size
+        # target = torch.zeros(960, 1)
+        # target[:15, :] = curr_response
+        # curr_response = target
+        # print(curr_response.size())
+        # curr_response = torch.reshape(curr_response, (15, 64))
+        # print(curr_response.size())
+        # curr_response = curr_response.to(device)
+        # responses.append(curr_response) 
         
         
         #Ease of answering
@@ -243,7 +253,7 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
         r3 = semantic_coherence(ep_input, lengths, target_var, mask, max_target_len, forward_encoder, forward_decoder, backward_encoder, backward_decoder, batch_size, teacher_forcing_ratio)
 
         #Information flow
-        r4 = emotion_reward(responses)
+        r4 = emotion_reward(responses, sentiment_net, max_seq_length)
 
         #Final reward as a weighted sum of rewards
         r = l1*r1 + l2*r2 + l3*r3 + l4*r4
@@ -272,8 +282,8 @@ def calculate_rewards(input_var, lengths, target_var, mask, max_target_len, forw
 
 
 def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, forward_decoder_optimizer, \
-                    backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, \
-                    teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length):
+                    backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, teacher_forcing_ratio,\
+                    embedding, n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length):
 
     dull_responses = ["i do not know what you are talking about.", "i do not know.", "you do not know.", "you know what i mean.", "i know what you mean.", "you know what i am saying.", "you do not know anything."]
 
@@ -290,7 +300,6 @@ def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forwar
     #Training loop
     print("Training...")
     for iteration in range(start_iteration, n_iteration + 1):
-        print("Iteration", iteration)
         training_batch = training_batches[iteration - 1]
         # Extract fields from batch
         input_variable, lengths, target_variable, mask, max_target_len = training_batch
@@ -334,10 +343,10 @@ def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forwar
                 os.makedirs(directory)
             torch.save({
                 'iteration': iteration,
-                'en': encoder.state_dict(),
-                'de': decoder.state_dict(),
-                'en_opt': encoder_optimizer.state_dict(),
-                'de_opt': decoder_optimizer.state_dict(),
+                'en': forward_encoder.state_dict(),
+                'de': forward_decoder.state_dict(),
+                'en_opt': forward_encoder_optimizer.state_dict(),
+                'de_opt': forward_decoder_optimizer.state_dict(),
                 'loss': loss,
                 'voc_dict': voc.__dict__,
                 'embedding': embedding.state_dict()
@@ -345,10 +354,6 @@ def training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forwar
 
 
 if __name__ == "__main__":
-    #forward_encoder = EncoderRNN(hidden_size, embedding, encoder_n_layers, dropout)
-    #forward_decoder = LuongAttnDecoderRNN(attn_model, embedding, hidden_size, voc.num_words, decoder_n_layers, dropout)
-    #forward_encoder = forward_encoder.to(device)
-    #forward_decoder = forward_decoder.to(device)
 
     # device choice
     USE_CUDA = torch.cuda.is_available()
@@ -359,10 +364,17 @@ if __name__ == "__main__":
     datafile = os.path.join(corpus, "formatted_dialogues_train.txt")
 
     # load sentiment classifier model
-    sentiment_classifier_filepath = "./data/save/SentimentClassifier/{}_checkpoint.tar".format(500)
+    sentiment_classifier_filepath = "./data/save/MulticlassSentimentClassifier/{}_checkpoint.tar".format(500)
     voc, sentiment_net, max_seq_length = load_sentiment_checkpoint(sentiment_classifier_filepath, Voc(corpus_name))
 
-    # Load/Assemble voc and pairs
+    # Load/Assemble voc and pairs 
+    # filename = os.path.join("data", "save", "MulticlassSentimentClassifier", \
+    #                         "500_checkpoint.tar")
+    # checkpoint = torch.load(filename)
+    # voc = Voc(corpus_name)
+    # voc.__dict__ = checkpoint['voc_dict']
+    voc.trimmed = False
+    
     save_dir = os.path.join("data", "save")
     voc, pairs = load_prepare_data(corpus, corpus_name, datafile, save_dir, voc)
     # Print some pairs to validate
@@ -395,8 +407,10 @@ if __name__ == "__main__":
     batch_size = 64
 
     # Set checkpoint to load from; set to None if starting from scratch
-    loadFilename = None
-    checkpoint_iter = 10000  # 4000
+    # seq2seq_filename = None
+    seq2seq_filename = "data/save/cb_model/train/2-2_500/10000_checkpoint.tar"
+    loadFilename = seq2seq_filename
+    # checkpoint_iter = 10000  # 4000
     # loadFilename = os.path.join(save_dir, model_name, corpus_name,
     #                            '{}-{}_{}'.format(encoder_n_layers, decoder_n_layers, hidden_size),
     #                            '{}_checkpoint.tar'.format(checkpoint_iter))
@@ -413,7 +427,7 @@ if __name__ == "__main__":
         encoder_optimizer_sd = checkpoint['en_opt']
         decoder_optimizer_sd = checkpoint['de_opt']
         embedding_sd = checkpoint['embedding']
-        voc.__dict__ = checkpoint['voc_dict']
+        # voc.__dict__ = checkpoint['voc_dict']
 
     print('Building encoder and decoder ...')
     # Initialize word embeddings
@@ -483,10 +497,11 @@ if __name__ == "__main__":
 
     #Configure RL model
 
-    model_name='RL_model_seq'
-    n_iteration = 10000
-    print_every=100
-    save_every=500
+    # model_name='RL_model_seq_no_seq2seq'
+    model_name='RL_model_load_seq_emotion'
+    n_iteration = 10000 #10000
+    print_every = 10
+    save_every = 500
     learning_rate = 0.0001
     decoder_learning_ratio = 5.0
     teacher_forcing_ratio = 0.5
@@ -528,6 +543,7 @@ if __name__ == "__main__":
                 
     # Run training iterations
     print("Starting Training!")
+    # print("==========  Without emotion!! ============")
     training_rl_loop(model_name, voc, pairs, batch_size, forward_encoder, forward_encoder_optimizer, forward_decoder, \
-                    forward_decoder_optimizer, backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, \
-                    teacher_forcing_ratio,n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length)
+                    forward_decoder_optimizer, backward_encoder, backward_encoder_optimizer, backward_decoder, backward_decoder_optimizer, teacher_forcing_ratio, \
+                    embedding, n_iteration, print_every, save_every, save_dir, sentiment_net, max_seq_length)
